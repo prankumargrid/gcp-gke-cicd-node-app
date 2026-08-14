@@ -1,0 +1,155 @@
+name: ci-only
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  IMAGE_NAME: node-gke-cicd
+  IMAGE_TAG: ci-${{ github.sha }}
+
+jobs:
+  test:
+    name: Test Node application
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Static syntax check
+        run: npm run check
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+  docker-scan:
+    name: Build and scan Docker image
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image locally
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          output: trivy-image.txt
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Publish image scan summary
+        run: |
+          {
+            echo "### Docker Image Security Scan"
+            echo ""
+            echo '```text'
+            cat trivy-image.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  validate-iac:
+    name: Validate IaC and Kubernetes manifests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.14.6"
+
+      - name: Terraform format check
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init without backend
+        working-directory: infra/terraform
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: infra/terraform
+        run: terraform validate
+
+      - name: Parse Kubernetes YAML
+        run: |
+          ruby -e 'require "yaml"; Dir["k8s/*.yaml"].sort.each { |file| YAML.load_file(file); puts "ok #{file}" }'
+
+      - name: Scan IaC config with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          output: trivy-config.txt
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Publish IaC scan summary
+        run: |
+          {
+            echo "### IaC Security Scan"
+            echo ""
+            echo '```text'
+            cat trivy-config.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  summary:
+    name: Pipeline summary
+    runs-on: ubuntu-24.04
+    needs:
+      - test
+      - docker-scan
+      - validate-iac
+    if: always()
+    steps:
+      - name: Summarize result
+        run: |
+          {
+            echo "### CI-only Pipeline Result"
+            echo ""
+            echo "- Node tests: ${{ needs.test.result }}"
+            echo "- Docker build and image scan: ${{ needs.docker-scan.result }}"
+            echo "- Terraform/Kubernetes/IaC validation: ${{ needs.validate-iac.result }}"
+            echo ""
+            echo "GCP Artifact Registry push and GKE deployment are intentionally disabled in this version."
+          } >> "$GITHUB_STEP_SUMMARY"
+
