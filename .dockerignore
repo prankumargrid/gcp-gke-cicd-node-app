@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+npm-debug.log
+coverage
+.env
+.env.*
+Dockerfile
+README.md
+infra
+k8s
+test
+gha-creds-*.json
+gha-kubeconfig-*
+

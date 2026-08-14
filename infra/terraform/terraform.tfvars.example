@@ -1,0 +1,5 @@
+project_id   = "your-gcp-project-id"
+region       = "us-central1"
+github_owner = "your-github-user-or-org"
+github_repo  = "gcp-gke-cicd-node-app"
+

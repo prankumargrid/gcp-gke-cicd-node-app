@@ -1,0 +1,28 @@
+{
+  "name": "gcp-gke-cicd-node-app",
+  "version": "1.0.0",
+  "description": "A simple Express web application deployed to GKE with GitHub Actions, Artifact Registry, Terraform, and Trivy.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "check": "node --check src/app.js && node --check src/server.js && node --check test/app.test.js"
+  },
+  "keywords": [
+    "express",
+    "docker",
+    "gke",
+    "github-actions",
+    "terraform"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "helmet": "^8.1.0"
+  },
+  "devDependencies": {}
+}
+
