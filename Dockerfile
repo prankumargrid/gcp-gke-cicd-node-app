@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24-alpine AS production-deps
+FROM node:26-alpine AS production-deps
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-FROM node:24-alpine AS runtime
+FROM node:26-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
